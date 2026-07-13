@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Clean Reader",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Show articles in a clean reader overlay with typography controls.",
   "permissions": [
     "activeTab",
@@ -23,6 +23,17 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "reader.html"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   }

@@ -40,6 +40,8 @@ See [PRIVACY.md](PRIVACY.md) for the full privacy note.
 - `scripting`: injects the article extractor and reader overlay into the active tab.
 - `storage`: saves typography and theme preferences locally.
 
+The overlay frames `reader.html` from the extension so custom local fonts resolve from the extension page rather than the source website.
+
 ## Project Status
 
 This is an early, practical prototype. It works best on conventional article pages. Some pages, PDFs, browser-internal pages, the Chrome Web Store, and heavily protected sites may block extension injection or article extraction.

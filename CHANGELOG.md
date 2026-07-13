@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4
+
+- Rendered the same-tab overlay through the extension reader page so local fonts are resolved from the extension origin.
+- Improved custom local font matching for families like `Literata TT Text` by also trying regular/full/PostScript-style names.
+
 ## 0.3.3
 
 - Added a `Page default` font option before `Custom local font`.

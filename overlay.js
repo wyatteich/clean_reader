@@ -4,6 +4,7 @@
   }
 
   const HOST_ID = "quiet-reader-overlay-host";
+  const PAYLOAD_PREFIX = "quiet-reader:";
   const PREFS_KEY = "quiet-reader:prefs";
   const CUSTOM_FONT_ALIAS = "Clean Reader Custom Local";
   const EXTENSION_STYLE_SUFFIX =
@@ -38,7 +39,7 @@
     },
     {
       label: "Literata",
-      value: 'Literata, Georgia, "Times New Roman", serif'
+      value: 'Literata, "Literata TT Text", Georgia, "Times New Roman", serif'
     },
     {
       label: "Charter",
@@ -152,8 +153,11 @@
     show
   };
 
-  async function show(payload, cssText) {
+  async function show(payload) {
     closeExistingOverlay();
+
+    const id = createPayloadId();
+    await setPayload(id, payload || {});
 
     const host = document.createElement("div");
     host.id = HOST_ID;
@@ -168,12 +172,34 @@
 
     const shadow = host.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = buildOverlayCss(cssText || "");
+    style.textContent = `
+      :host {
+        all: initial;
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+      }
+
+      iframe {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        border: 0;
+        background: #f6f4ef;
+      }
+
+      @supports (height: 100dvh) {
+        iframe {
+          height: 100dvh;
+        }
+      }
+    `;
     shadow.appendChild(style);
 
-    const template = document.createElement("template");
-    template.innerHTML = MARKUP.trim();
-    shadow.appendChild(template.content.cloneNode(true));
+    const iframe = document.createElement("iframe");
+    iframe.title = "Clean Reader";
+    iframe.src = chrome.runtime.getURL(`reader.html?id=${encodeURIComponent(id)}&overlay=1`);
+    shadow.appendChild(iframe);
 
     document.documentElement.appendChild(host);
     document.documentElement.style.overflow = "hidden";
@@ -181,16 +207,47 @@
       document.body.style.overflow = "hidden";
     }
 
-    const state = createOverlayState({
-      host,
-      shadow,
-      root: shadow.getElementById("quietReaderFrame"),
-      originalOverflow
-    });
+    const abortController = new AbortController();
+    const close = () => {
+      abortController.abort();
+      document.documentElement.style.overflow = originalOverflow.html;
+      if (document.body) {
+        document.body.style.overflow = originalOverflow.body;
+      }
+      host.remove();
+    };
 
-    host.__quietReaderClose = state.close;
-    await state.init(payload || {});
+    window.addEventListener(
+      "message",
+      (event) => {
+        if (event.source === iframe.contentWindow && event.data && event.data.type === "quiet-reader:close") {
+          close();
+        }
+      },
+      { signal: abortController.signal }
+    );
+
+    host.__quietReaderClose = close;
     return { ok: true };
+  }
+
+  function createPayloadId() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function setPayload(id, payload) {
+    const key = PAYLOAD_PREFIX + id;
+
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set({ [key]: payload }, () => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        resolve();
+      });
+    });
   }
 
   function closeExistingOverlay() {
@@ -547,14 +604,29 @@
 
     function customFontStack(value) {
       const candidates = customFontCandidates(value);
-      applyCustomFontFace(candidates);
+      const localCandidates = localFontCandidates(candidates);
+      applyCustomFontFace(localCandidates);
 
       if (!candidates.length) {
         return DEFAULT_PREFS.font;
       }
 
       const directStack = candidates.map(quoteFontFamily).join(", ");
-      return `"${CUSTOM_FONT_ALIAS}", ${directStack}, Georgia, "Times New Roman", serif`;
+      return `${directStack}, "${CUSTOM_FONT_ALIAS}", Georgia, "Times New Roman", serif`;
+    }
+
+    function localFontCandidates(candidates) {
+      const expanded = [];
+      candidates.forEach((candidate) => {
+        expanded.push(candidate);
+
+        if (!/\b(regular|italic|bold|medium|light|semibold|extrabold|black)\b/i.test(candidate)) {
+          expanded.push(`${candidate} Regular`);
+          expanded.push(`${candidate.replace(/\s+/g, "")}-Regular`);
+        }
+      });
+
+      return [...new Set(expanded)].slice(0, 15);
     }
 
     function pageFontStack(value) {

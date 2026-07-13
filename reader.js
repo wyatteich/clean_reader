@@ -33,7 +33,7 @@ const FONT_OPTIONS = [
   },
   {
     label: "Literata",
-    value: 'Literata, Georgia, "Times New Roman", serif'
+    value: 'Literata, "Literata TT Text", Georgia, "Times New Roman", serif'
   },
   {
     label: "Charter",
@@ -90,6 +90,7 @@ const elements = {
   articleMeta: document.getElementById("articleMeta"),
   articleSite: document.getElementById("articleSite"),
   articleTitle: document.getElementById("articleTitle"),
+  closeOverlayButton: document.getElementById("closeOverlayButton"),
   customFontInput: document.getElementById("customFontInput"),
   fontSelect: document.getElementById("fontSelect"),
   lineHeightRange: document.getElementById("lineHeightRange"),
@@ -174,10 +175,21 @@ function bindControls() {
     saveAndApplyPrefs();
   });
 
+  elements.closeOverlayButton.addEventListener("click", closeReader);
+
   elements.themeSelect.addEventListener("change", () => {
     prefs.theme = elements.themeSelect.value || "light";
     saveAndApplyPrefs();
   });
+}
+
+function closeReader() {
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: "quiet-reader:close" }, "*");
+    return;
+  }
+
+  window.close();
 }
 
 function bindNumberInput(input, key, min, max, decimals) {
@@ -346,14 +358,29 @@ function hasCustomPrefs() {
 
 function customFontStack(value) {
   const candidates = customFontCandidates(value);
-  applyCustomFontFace(candidates);
+  const localCandidates = localFontCandidates(candidates);
+  applyCustomFontFace(localCandidates);
 
   if (!candidates.length) {
     return DEFAULT_PREFS.font;
   }
 
   const directStack = candidates.map(quoteFontFamily).join(", ");
-  return `"${CUSTOM_FONT_ALIAS}", ${directStack}, Georgia, "Times New Roman", serif`;
+  return `${directStack}, "${CUSTOM_FONT_ALIAS}", Georgia, "Times New Roman", serif`;
+}
+
+function localFontCandidates(candidates) {
+  const expanded = [];
+  candidates.forEach((candidate) => {
+    expanded.push(candidate);
+
+    if (!/\b(regular|italic|bold|medium|light|semibold|extrabold|black)\b/i.test(candidate)) {
+      expanded.push(`${candidate} Regular`);
+      expanded.push(`${candidate.replace(/\s+/g, "")}-Regular`);
+    }
+  });
+
+  return [...new Set(expanded)].slice(0, 15);
 }
 
 function pageFontStack(value) {
@@ -442,10 +469,15 @@ async function getPayload() {
   const key = PAYLOAD_PREFIX + id;
   const fromSession = await getFromArea(chrome.storage.session, key);
   if (fromSession) {
+    removeFromArea(chrome.storage.session, key);
     return fromSession;
   }
 
   const fromLocal = await getFromArea(chrome.storage.local, key);
+  if (fromLocal) {
+    removeFromArea(chrome.storage.local, key);
+  }
+
   return (
     fromLocal || {
       error: true,
@@ -465,6 +497,12 @@ function getFromArea(area, key) {
       resolve(result && result[key] ? result[key] : null);
     });
   });
+}
+
+function removeFromArea(area, key) {
+  if (area) {
+    area.remove(key);
+  }
 }
 
 function renderPayload(payload) {

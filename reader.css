@@ -207,18 +207,21 @@ input[type="range"] {
   text-align: center;
 }
 
-.reset-button:hover {
+.reset-button:hover,
+.close-button:hover {
   background: var(--control-hover-bg);
 }
 
 .reset-button:focus-visible,
+.close-button:focus-visible,
 select:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.reset-button {
+.reset-button,
+.close-button {
   flex: 0 0 auto;
   width: auto;
   min-height: 32px;
@@ -230,6 +233,10 @@ input:focus-visible {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.close-button {
+  color: var(--page-text);
 }
 
 .page-shell {

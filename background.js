@@ -1,5 +1,4 @@
 const PAYLOAD_PREFIX = "quiet-reader:";
-let readerCssPromise = null;
 
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab || typeof tab.id !== "number") {
@@ -72,24 +71,16 @@ async function showReaderOverlay(tabId, payload) {
     files: ["overlay.js"]
   });
 
-  const cssText = await getReaderCss();
   await chrome.scripting.executeScript({
     target: { tabId },
-    func: (article, css) => {
+    func: (article) => {
       if (!globalThis.quietReaderOverlay || typeof globalThis.quietReaderOverlay.show !== "function") {
         throw new Error("Clean Reader overlay renderer was not available.");
       }
-      return globalThis.quietReaderOverlay.show(article, css);
+      return globalThis.quietReaderOverlay.show(article);
     },
-    args: [payload, cssText]
+    args: [payload]
   });
-}
-
-function getReaderCss() {
-  if (!readerCssPromise) {
-    readerCssPromise = fetch(chrome.runtime.getURL("reader.css")).then((response) => response.text());
-  }
-  return readerCssPromise;
 }
 
 async function openReaderError(title, message, tab, error) {
