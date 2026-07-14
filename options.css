@@ -1,0 +1,109 @@
+:root {
+  color-scheme: light;
+  --page-bg: #f6f4ef;
+  --page-text: #242721;
+  --muted-text: #667064;
+  --hairline: #d8ddd1;
+  --control-bg: rgba(255, 255, 255, 0.68);
+  --control-hover-bg: rgba(255, 255, 255, 0.9);
+  --accent: #2b7965;
+  --accent-ink: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page-bg: #191b1f;
+    --page-text: #e5e7ea;
+    --muted-text: #a5acb5;
+    --hairline: #343942;
+    --control-bg: rgba(255, 255, 255, 0.05);
+    --control-hover-bg: rgba(255, 255, 255, 0.08);
+    --accent: #6db89e;
+    --accent-ink: #10251e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--page-text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.settings-shell {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+h1 {
+  margin: 0 0 28px;
+  font-size: 1.5rem;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.settings-section {
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+
+.settings-hint {
+  margin: 0 0 20px;
+  color: var(--muted-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settings-hint code {
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.settings-field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.settings-field span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.required {
+  color: var(--accent);
+}
+
+.settings-field input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--hairline);
+  background: var(--control-bg);
+  color: var(--page-text);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.settings-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-status {
+  min-height: 18px;
+  margin: 4px 0 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+}

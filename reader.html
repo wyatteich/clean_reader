@@ -53,6 +53,7 @@
           <button class="reset-button" id="resetPrefsButton" type="button" hidden>Reset</button>
         </div>
 
+        <button class="stepper-btn" id="openSettingsButton" type="button" aria-label="Open Clean Reader settings">&#9881;</button>
         <button class="close-button" id="closeOverlayButton" type="button">Close</button>
       </div>
     </header>
@@ -68,6 +69,20 @@
         <section class="article-content" id="articleContent"></section>
       </article>
     </main>
+
+    <div class="obsidian-save-popup" id="obsidianPopup" hidden>
+      <div class="obsidian-popup-default" id="obsidianPopupDefault">
+        <button class="obsidian-popup-btn" type="button" id="obsidianSaveButton">Save</button>
+        <button class="obsidian-popup-btn" type="button" id="obsidianCommentButton">Add comment</button>
+      </div>
+      <div class="obsidian-popup-comment" id="obsidianPopupComment" hidden>
+        <textarea id="obsidianCommentInput" rows="2" placeholder="Add a note&hellip;"></textarea>
+        <div class="obsidian-popup-comment-actions">
+          <button class="obsidian-popup-btn" type="button" id="obsidianCommentCancelButton">Cancel</button>
+          <button class="obsidian-popup-btn obsidian-popup-btn-primary" type="button" id="obsidianCommentSaveButton">Save</button>
+        </div>
+      </div>
+    </div>
 
     <script src="reader.js"></script>
   </body>

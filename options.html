@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Clean Reader Settings</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="settings-shell">
+      <h1>Clean Reader Settings</h1>
+
+      <section class="settings-section">
+        <h2>Obsidian clippings</h2>
+        <p class="settings-hint">
+          Highlighted text saved from the reader overlay is sent to Obsidian via an
+          <code>obsidian://new</code> link, so Obsidian must be installed and the vault below
+          must be open locally.
+        </p>
+
+        <label class="settings-field">
+          <span>Vault name <span class="required">(required)</span></span>
+          <input id="vaultInput" type="text" autocomplete="off" spellcheck="false" placeholder="My Vault">
+        </label>
+
+        <label class="settings-field">
+          <span>Folder</span>
+          <input id="folderInput" type="text" autocomplete="off" spellcheck="false" placeholder="Clippings/">
+        </label>
+
+        <label class="settings-field">
+          <span>Default tags</span>
+          <input id="tagsInput" type="text" autocomplete="off" spellcheck="false" placeholder="reading, ideas">
+        </label>
+
+        <p class="settings-status" id="settingsStatus" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <script src="options.js"></script>
+  </body>
+</html>

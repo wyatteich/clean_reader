@@ -1,6 +1,7 @@
 const PAYLOAD_PREFIX = "quiet-reader:";
 const PREFS_KEY = "quiet-reader:prefs";
 const SCROLL_KEY_PREFIX = "quiet-reader:scroll:";
+const OBSIDIAN_SETTINGS_KEY = "quiet-reader:obsidian-settings";
 const CUSTOM_FONT_ALIAS = "Clean Reader Custom Local";
 const EXTENSION_STYLE_SUFFIX =
   globalThis.chrome && chrome.runtime && chrome.runtime.id ? chrome.runtime.id : "local";
@@ -97,6 +98,15 @@ const elements = {
   lineHeightDecButton: document.getElementById("lineHeightDecButton"),
   lineHeightIncButton: document.getElementById("lineHeightIncButton"),
   lineHeightValueInput: document.getElementById("lineHeightValueInput"),
+  obsidianCommentButton: document.getElementById("obsidianCommentButton"),
+  obsidianCommentCancelButton: document.getElementById("obsidianCommentCancelButton"),
+  obsidianCommentInput: document.getElementById("obsidianCommentInput"),
+  obsidianCommentSaveButton: document.getElementById("obsidianCommentSaveButton"),
+  obsidianPopup: document.getElementById("obsidianPopup"),
+  obsidianPopupComment: document.getElementById("obsidianPopupComment"),
+  obsidianPopupDefault: document.getElementById("obsidianPopupDefault"),
+  obsidianSaveButton: document.getElementById("obsidianSaveButton"),
+  openSettingsButton: document.getElementById("openSettingsButton"),
   resetPrefsButton: document.getElementById("resetPrefsButton"),
   sizeDecButton: document.getElementById("sizeDecButton"),
   sizeIncButton: document.getElementById("sizeIncButton"),
@@ -111,6 +121,11 @@ const elements = {
 let prefs = { ...DEFAULT_PREFS };
 let pageFont = "";
 let scrollKey = "";
+let articlePayload = null;
+let obsidianSession = { saved: false, filePath: "" };
+let pendingSelectionText = "";
+let commentModeActive = false;
+let selectionFrame = null;
 
 init();
 
@@ -129,6 +144,7 @@ async function init() {
     scrollKey = articleScrollKey(payload.sourceUrl);
     await restoreScrollPosition(payload.scrollPercent);
     bindScrollTracking();
+    bindHighlightSaveUI();
   }
 }
 
@@ -178,6 +194,10 @@ function bindControls() {
   });
 
   elements.closeOverlayButton.addEventListener("click", closeReader);
+
+  elements.openSettingsButton.addEventListener("click", () => {
+    chrome.runtime.openOptionsPage();
+  });
 
   elements.themeSelect.addEventListener("change", () => {
     prefs.theme = elements.themeSelect.value || "light";
@@ -611,6 +631,7 @@ function removeFromArea(area, key) {
 
 function renderPayload(payload) {
   const data = payload || {};
+  articlePayload = data;
   document.title = data.title ? `${data.title} - Clean Reader` : "Clean Reader";
   elements.articleTitle.textContent = data.title || "Clean Reader";
   elements.articleSite.textContent = data.siteName || "";
@@ -778,4 +799,292 @@ function upgradeArticleLinks() {
     link.target = "_blank";
     link.rel = "noreferrer noopener";
   });
+}
+
+function bindHighlightSaveUI() {
+  if (!elements.obsidianPopup) {
+    return;
+  }
+
+  document.addEventListener("selectionchange", onSelectionChange, { passive: true });
+
+  elements.obsidianSaveButton.addEventListener("mousedown", (event) => event.preventDefault());
+  elements.obsidianCommentButton.addEventListener("mousedown", (event) => event.preventDefault());
+
+  elements.obsidianSaveButton.addEventListener("click", () => {
+    if (!pendingSelectionText) {
+      return;
+    }
+    saveClippingToObsidian(pendingSelectionText, "");
+  });
+
+  elements.obsidianCommentButton.addEventListener("click", () => {
+    if (!pendingSelectionText) {
+      return;
+    }
+    enterCommentMode();
+  });
+
+  elements.obsidianCommentCancelButton.addEventListener("click", () => {
+    exitCommentMode();
+  });
+
+  elements.obsidianCommentSaveButton.addEventListener("click", () => {
+    if (!pendingSelectionText) {
+      return;
+    }
+    saveClippingToObsidian(pendingSelectionText, elements.obsidianCommentInput.value.trim());
+  });
+}
+
+function onSelectionChange() {
+  if (selectionFrame) {
+    return;
+  }
+  selectionFrame = window.requestAnimationFrame(() => {
+    selectionFrame = null;
+    handleSelectionChange();
+  });
+}
+
+function handleSelectionChange() {
+  if (commentModeActive) {
+    return;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    hideObsidianPopup();
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!elements.articleContent.contains(range.commonAncestorContainer)) {
+    hideObsidianPopup();
+    return;
+  }
+
+  const text = selection.toString().trim();
+  if (!text) {
+    hideObsidianPopup();
+    return;
+  }
+
+  pendingSelectionText = text;
+  positionObsidianPopup(range.getBoundingClientRect());
+}
+
+function positionObsidianPopup(rect) {
+  const popup = elements.obsidianPopup;
+  popup.hidden = false;
+  popup.classList.remove("is-error", "is-saved");
+  resetObsidianPopupToDefault();
+
+  const margin = 8;
+  const popupRect = popup.getBoundingClientRect();
+
+  let top = rect.top - popupRect.height - margin;
+  if (top < margin) {
+    top = rect.bottom + margin;
+  }
+  top = Math.max(margin, Math.min(top, window.innerHeight - popupRect.height - margin));
+
+  let left = rect.left + rect.width / 2 - popupRect.width / 2;
+  left = Math.max(margin, Math.min(left, window.innerWidth - popupRect.width - margin));
+
+  popup.style.top = `${top}px`;
+  popup.style.left = `${left}px`;
+  popup.classList.add("is-visible");
+}
+
+function hideObsidianPopup() {
+  if (!elements.obsidianPopup) {
+    return;
+  }
+  elements.obsidianPopup.classList.remove("is-visible", "is-saved", "is-error");
+  pendingSelectionText = "";
+  if (commentModeActive) {
+    exitCommentMode();
+  }
+}
+
+function resetObsidianPopupToDefault() {
+  commentModeActive = false;
+  elements.obsidianPopupComment.hidden = true;
+  elements.obsidianPopupDefault.hidden = false;
+  elements.obsidianCommentInput.value = "";
+}
+
+function enterCommentMode() {
+  commentModeActive = true;
+  elements.obsidianPopupDefault.hidden = true;
+  elements.obsidianPopupComment.hidden = false;
+  elements.obsidianCommentInput.value = "";
+  elements.obsidianCommentInput.focus();
+}
+
+function exitCommentMode() {
+  commentModeActive = false;
+  elements.obsidianPopupComment.hidden = true;
+  elements.obsidianPopupDefault.hidden = false;
+}
+
+async function saveClippingToObsidian(excerptText, comment) {
+  const settings = await getObsidianSettings();
+  if (!settings.vault) {
+    showObsidianPopupError();
+    return;
+  }
+
+  if (!obsidianSession.filePath) {
+    obsidianSession.filePath = buildFilePath(articlePayload, settings);
+  }
+
+  const content = buildClippingMarkdown({
+    isFirstSave: !obsidianSession.saved,
+    excerptText,
+    comment,
+    payload: articlePayload || {},
+    settings
+  });
+
+  const uri = buildObsidianUri({
+    vault: settings.vault,
+    file: obsidianSession.filePath,
+    content,
+    append: obsidianSession.saved
+  });
+
+  window.location.href = uri;
+  obsidianSession.saved = true;
+  flashObsidianSaved();
+}
+
+function showObsidianPopupError() {
+  const popup = elements.obsidianPopup;
+  popup.classList.add("is-error");
+  const original = elements.obsidianSaveButton.textContent;
+  elements.obsidianSaveButton.textContent = "Set vault in Settings";
+  setTimeout(() => {
+    elements.obsidianSaveButton.textContent = original;
+    popup.classList.remove("is-error");
+  }, 2200);
+}
+
+function flashObsidianSaved() {
+  elements.obsidianPopup.classList.add("is-saved");
+  setTimeout(() => {
+    hideObsidianPopup();
+  }, 900);
+}
+
+function getObsidianSettings() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(OBSIDIAN_SETTINGS_KEY, (result) => {
+      const stored = (result && result[OBSIDIAN_SETTINGS_KEY]) || {};
+      resolve({ vault: "", folder: "", tags: "", ...stored });
+    });
+  });
+}
+
+function slugifyTitle(title) {
+  const cleaned = String(title || "")
+    .replace(/[\\/:*?"<>|#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return cleaned || "Untitled Clipping";
+}
+
+function normalizeFolder(folder) {
+  const trimmed = String(folder || "")
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/\/+/g, "/");
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+}
+
+function buildFilePath(payload, settings) {
+  const folder = normalizeFolder(settings.folder);
+  const name = slugifyTitle(payload && payload.title);
+  return `${folder}${name}`;
+}
+
+function buildClippingMarkdown({ isFirstSave, excerptText, comment, payload, settings }) {
+  const body = buildExcerptBlock(excerptText, comment);
+  if (!isFirstSave) {
+    return `\n\n${body}`;
+  }
+  return `${buildFrontmatter(payload, settings)}\n\n${body}`;
+}
+
+function buildExcerptBlock(excerptText, comment) {
+  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const lines = [`> [!quote] Highlighted ${time}`, quoteLines(excerptText)];
+  if (comment) {
+    lines.push(">");
+    lines.push(quoteLines(`**Note:** ${comment}`));
+  }
+  return lines.join("\n");
+}
+
+function quoteLines(text) {
+  return String(text)
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join("\n");
+}
+
+function buildFrontmatter(payload, settings) {
+  const lines = ["---"];
+  lines.push(`title: ${formatYamlString(payload.title || "Untitled article")}`);
+  if (payload.sourceUrl) {
+    lines.push(`source: ${formatYamlString(payload.sourceUrl)}`);
+  }
+  if (payload.byline) {
+    lines.push(`author: ${formatYamlString(payload.byline)}`);
+  }
+  if (payload.published) {
+    lines.push(`published: ${formatYamlString(payload.published)}`);
+  }
+  lines.push(`created: ${formatYamlString(todayDateString())}`);
+  if (payload.excerpt) {
+    lines.push(`description: ${formatYamlString(payload.excerpt)}`);
+  }
+
+  lines.push("tags:");
+  buildTagList(settings.tags).forEach((tag) => lines.push(`  - ${tag}`));
+
+  lines.push("---");
+  return lines.join("\n");
+}
+
+function buildTagList(rawTags) {
+  const extra = String(rawTags || "")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  return [...new Set(["clippings", ...extra])];
+}
+
+function formatYamlString(value) {
+  const escaped = String(value || "")
+    .replace(/\r?\n/g, " ")
+    .replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildObsidianUri({ vault, file, content, append }) {
+  let uri = `obsidian://new?vault=${encodeURIComponent(vault)}&file=${encodeURIComponent(file)}&content=${encodeURIComponent(content)}`;
+  if (append) {
+    uri += "&append=true";
+  }
+  return uri;
 }
