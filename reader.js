@@ -2,6 +2,7 @@ const PAYLOAD_PREFIX = "quiet-reader:";
 const PREFS_KEY = "quiet-reader:prefs";
 const SCROLL_KEY_PREFIX = "quiet-reader:scroll:";
 const OBSIDIAN_SETTINGS_KEY = "quiet-reader:obsidian-settings";
+const OBSIDIAN_CREATED_PREFIX = "quiet-reader:obsidian-created:";
 const CUSTOM_FONT_ALIAS = "Clean Reader Custom Local";
 const EXTENSION_STYLE_SUFFIX =
   globalThis.chrome && chrome.runtime && chrome.runtime.id ? chrome.runtime.id : "local";
@@ -940,6 +941,10 @@ async function saveClippingToObsidian(excerptText, comment) {
     obsidianSession.filePath = buildFilePath(articlePayload, settings);
   }
 
+  if (!obsidianSession.saved) {
+    obsidianSession.saved = await hasObsidianFileBeenCreated(obsidianSession.filePath);
+  }
+
   const content = buildClippingMarkdown({
     isFirstSave: !obsidianSession.saved,
     excerptText,
@@ -951,13 +956,29 @@ async function saveClippingToObsidian(excerptText, comment) {
   const uri = buildObsidianUri({
     vault: settings.vault,
     file: obsidianSession.filePath,
-    content,
-    append: obsidianSession.saved
+    content
   });
 
   chrome.runtime.sendMessage({ type: "quiet-reader:open-obsidian", uri });
+  if (!obsidianSession.saved) {
+    markObsidianFileCreated(obsidianSession.filePath);
+  }
   obsidianSession.saved = true;
   flashObsidianSaved();
+}
+
+function hasObsidianFileBeenCreated(filePath) {
+  const key = OBSIDIAN_CREATED_PREFIX + filePath;
+  return new Promise((resolve) => {
+    chrome.storage.local.get(key, (result) => {
+      resolve(Boolean(result && result[key]));
+    });
+  });
+}
+
+function markObsidianFileCreated(filePath) {
+  const key = OBSIDIAN_CREATED_PREFIX + filePath;
+  chrome.storage.local.set({ [key]: true });
 }
 
 function showObsidianPopupError() {
@@ -1081,10 +1102,6 @@ function todayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function buildObsidianUri({ vault, file, content, append }) {
-  let uri = `obsidian://new?vault=${encodeURIComponent(vault)}&file=${encodeURIComponent(file)}&content=${encodeURIComponent(content)}`;
-  if (append) {
-    uri += "&append=true";
-  }
-  return uri;
+function buildObsidianUri({ vault, file, content }) {
+  return `obsidian://new?vault=${encodeURIComponent(vault)}&file=${encodeURIComponent(file)}&append=true&content=${encodeURIComponent(content)}`;
 }
