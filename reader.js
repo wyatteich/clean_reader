@@ -955,7 +955,7 @@ async function saveClippingToObsidian(excerptText, comment) {
     append: obsidianSession.saved
   });
 
-  window.location.href = uri;
+  chrome.runtime.sendMessage({ type: "quiet-reader:open-obsidian", uri });
   obsidianSession.saved = true;
   flashObsidianSaved();
 }
