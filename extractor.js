@@ -101,8 +101,17 @@
     wordCount,
     direction: document.dir || document.documentElement.getAttribute("dir") || "auto",
     pageFont,
-    sourceUrl: location.href
+    sourceUrl: location.href,
+    scrollPercent: getScrollPercent()
   };
+
+  function getScrollPercent() {
+    const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+    if (scrollable <= 0) {
+      return 0;
+    }
+    return Math.min(1, Math.max(0, window.scrollY / scrollable));
+  }
 
   function findBestCandidate() {
     const candidates = new Set();
@@ -374,22 +383,52 @@
   }
 
   function firstImageSource(img) {
-    const direct =
-      img.getAttribute("src") ||
-      img.getAttribute("data-src") ||
-      img.getAttribute("data-original") ||
-      img.getAttribute("data-lazy-src") ||
-      img.getAttribute("data-url");
-    if (direct) {
-      return absoluteUrl(direct);
+    const lazyAttrs = ["data-src", "data-original", "data-lazy-src", "data-url", "data-lazy", "data-actualsrc"];
+    for (const attr of lazyAttrs) {
+      const value = img.getAttribute(attr);
+      if (value) {
+        return absoluteUrl(value);
+      }
     }
 
-    const srcset = img.getAttribute("srcset") || img.getAttribute("data-srcset") || "";
-    const first = srcset
-      .split(",")
-      .map((entry) => entry.trim().split(/\s+/)[0])
-      .find(Boolean);
-    return first ? absoluteUrl(first) : "";
+    const lazySrcset = firstFromSrcset(img.getAttribute("data-srcset"));
+    if (lazySrcset) {
+      return absoluteUrl(lazySrcset);
+    }
+
+    const picture = img.closest("picture");
+    if (picture) {
+      const source = Array.from(picture.querySelectorAll("source")).find(
+        (candidate) => candidate.getAttribute("srcset") || candidate.getAttribute("data-srcset")
+      );
+      if (source) {
+        const candidate = firstFromSrcset(source.getAttribute("srcset") || source.getAttribute("data-srcset"));
+        if (candidate) {
+          return absoluteUrl(candidate);
+        }
+      }
+    }
+
+    // A `src` present alongside lazy-load attributes above is usually a
+    // placeholder (tracking pixel / blur-up), so it's only trusted once
+    // real lazy sources are ruled out. A data: URI is never useful here
+    // since the sanitizer only allows http(s) image sources.
+    const src = img.getAttribute("src");
+    if (src && !/^data:/i.test(src)) {
+      return absoluteUrl(src);
+    }
+
+    const srcset = firstFromSrcset(img.getAttribute("srcset"));
+    return srcset ? absoluteUrl(srcset) : "";
+  }
+
+  function firstFromSrcset(srcset) {
+    return (
+      (srcset || "")
+        .split(",")
+        .map((entry) => entry.trim().split(/\s+/)[0])
+        .find(Boolean) || ""
+    );
   }
 
   function absoluteUrl(value) {

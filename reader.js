@@ -1,5 +1,6 @@
 const PAYLOAD_PREFIX = "quiet-reader:";
 const PREFS_KEY = "quiet-reader:prefs";
+const SCROLL_KEY_PREFIX = "quiet-reader:scroll:";
 const CUSTOM_FONT_ALIAS = "Clean Reader Custom Local";
 const EXTENSION_STYLE_SUFFIX =
   globalThis.chrome && chrome.runtime && chrome.runtime.id ? chrome.runtime.id : "local";
@@ -93,19 +94,23 @@ const elements = {
   closeOverlayButton: document.getElementById("closeOverlayButton"),
   customFontInput: document.getElementById("customFontInput"),
   fontSelect: document.getElementById("fontSelect"),
-  lineHeightRange: document.getElementById("lineHeightRange"),
+  lineHeightDecButton: document.getElementById("lineHeightDecButton"),
+  lineHeightIncButton: document.getElementById("lineHeightIncButton"),
   lineHeightValueInput: document.getElementById("lineHeightValueInput"),
   resetPrefsButton: document.getElementById("resetPrefsButton"),
-  sizeRange: document.getElementById("sizeRange"),
+  sizeDecButton: document.getElementById("sizeDecButton"),
+  sizeIncButton: document.getElementById("sizeIncButton"),
   sizeValueInput: document.getElementById("sizeValueInput"),
   themeSelect: document.getElementById("themeSelect"),
   toolbar: document.querySelector(".reader-toolbar"),
-  widthRange: document.getElementById("widthRange"),
+  widthDecButton: document.getElementById("widthDecButton"),
+  widthIncButton: document.getElementById("widthIncButton"),
   widthValueInput: document.getElementById("widthValueInput")
 };
 
 let prefs = { ...DEFAULT_PREFS };
 let pageFont = "";
+let scrollKey = "";
 
 init();
 
@@ -119,6 +124,12 @@ async function init() {
   pageFont = cleanFontStack(payload && payload.pageFont);
   applyPrefs();
   renderPayload(payload);
+
+  if (payload && !payload.error) {
+    scrollKey = articleScrollKey(payload.sourceUrl);
+    await restoreScrollPosition(payload.scrollPercent);
+    bindScrollTracking();
+  }
 }
 
 function buildFontOptions() {
@@ -152,22 +163,13 @@ function bindControls() {
     }
   });
 
-  elements.sizeRange.addEventListener("input", () => {
-    prefs.size = Number(elements.sizeRange.value);
-    saveAndApplyPrefs();
-  });
+  bindStepper(elements.sizeDecButton, elements.sizeIncButton, "size", 15, 24, 1, 0);
   bindNumberInput(elements.sizeValueInput, "size", 15, 24, 0);
 
-  elements.lineHeightRange.addEventListener("input", () => {
-    prefs.lineHeight = Number(elements.lineHeightRange.value);
-    saveAndApplyPrefs();
-  });
+  bindStepper(elements.lineHeightDecButton, elements.lineHeightIncButton, "lineHeight", 1.35, 2.05, 0.05, 2);
   bindNumberInput(elements.lineHeightValueInput, "lineHeight", 1.35, 2.05, 2);
 
-  elements.widthRange.addEventListener("input", () => {
-    prefs.width = Number(elements.widthRange.value);
-    saveAndApplyPrefs();
-  });
+  bindStepper(elements.widthDecButton, elements.widthIncButton, "width", 560, 940, 10, 0);
   bindNumberInput(elements.widthValueInput, "width", 560, 940, 0);
 
   elements.resetPrefsButton.addEventListener("click", () => {
@@ -184,8 +186,11 @@ function bindControls() {
 }
 
 function closeReader() {
+  const percent = currentScrollPercent();
+  saveScrollPercent(percent);
+
   if (window.parent && window.parent !== window) {
-    window.parent.postMessage({ type: "quiet-reader:close" }, "*");
+    window.parent.postMessage({ type: "quiet-reader:close", scrollPercent: percent }, "*");
     return;
   }
 
@@ -218,6 +223,19 @@ function bindNumberInput(input, key, min, max, decimals) {
       input.blur();
     }
   });
+}
+
+function bindStepper(decButton, incButton, key, min, max, step, decimals) {
+  const factor = 10 ** decimals;
+  const adjust = (delta) => {
+    const current = Number(prefs[key]);
+    const base = Number.isFinite(current) ? current : min;
+    prefs[key] = Math.round(Math.min(max, Math.max(min, base + delta)) * factor) / factor;
+    saveAndApplyPrefs();
+  };
+
+  decButton.addEventListener("click", () => adjust(-step));
+  incButton.addEventListener("click", () => adjust(step));
 }
 
 function bindToolbarAutoHide() {
@@ -304,6 +322,82 @@ function bindToolbarAutoHide() {
   });
 }
 
+function articleScrollKey(url) {
+  if (!url) {
+    return "";
+  }
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    return SCROLL_KEY_PREFIX + parsed.toString();
+  } catch {
+    return SCROLL_KEY_PREFIX + url;
+  }
+}
+
+function currentScrollPercent() {
+  const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+  if (scrollable <= 0) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, window.scrollY / scrollable));
+}
+
+function scrollToPercent(percent) {
+  const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+  window.scrollTo(0, scrollable * percent);
+}
+
+function saveScrollPercent(percent) {
+  if (!scrollKey) {
+    return;
+  }
+  chrome.storage.local.set({ [scrollKey]: { percent, updatedAt: Date.now() } });
+}
+
+async function restoreScrollPosition(livePercent) {
+  const stored = await getStoredScrollPercent();
+  const percent = stored !== null ? stored : livePercent;
+  if (!Number.isFinite(percent)) {
+    return;
+  }
+
+  // Defer a tick so the just-rendered content can settle its layout before
+  // scrollHeight is measured. A timeout (rather than requestAnimationFrame)
+  // is used since it isn't gated on the document actually painting.
+  setTimeout(() => scrollToPercent(percent), 50);
+}
+
+function getStoredScrollPercent() {
+  if (!scrollKey) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    chrome.storage.local.get(scrollKey, (result) => {
+      const record = result && result[scrollKey];
+      resolve(record && Number.isFinite(record.percent) ? record.percent : null);
+    });
+  });
+}
+
+function bindScrollTracking() {
+  if (!scrollKey) {
+    return;
+  }
+
+  let saveTimer = null;
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+      }
+      saveTimer = setTimeout(() => saveScrollPercent(currentScrollPercent()), 400);
+    },
+    { passive: true }
+  );
+}
+
 function selectedFont() {
   const option = FONT_OPTIONS.find((font) => font.value === elements.fontSelect.value);
   return option || FONT_OPTIONS[0];
@@ -331,12 +425,22 @@ function applyPrefs() {
   if (document.activeElement !== elements.customFontInput) {
     elements.customFontInput.value = prefs.customFont || "";
   }
-  elements.sizeRange.value = prefs.size || DEFAULT_PREFS.size;
-  elements.lineHeightRange.value = prefs.lineHeight || DEFAULT_PREFS.lineHeight;
-  elements.widthRange.value = prefs.width || DEFAULT_PREFS.width;
-  elements.sizeValueInput.value = formatNumber(prefs.size || DEFAULT_PREFS.size, 0);
-  elements.lineHeightValueInput.value = formatNumber(prefs.lineHeight || DEFAULT_PREFS.lineHeight, 2);
-  elements.widthValueInput.value = formatNumber(prefs.width || DEFAULT_PREFS.width, 0);
+  const size = prefs.size || DEFAULT_PREFS.size;
+  const lineHeight = prefs.lineHeight || DEFAULT_PREFS.lineHeight;
+  const width = prefs.width || DEFAULT_PREFS.width;
+
+  elements.sizeValueInput.value = formatNumber(size, 0);
+  elements.sizeDecButton.disabled = size <= 15;
+  elements.sizeIncButton.disabled = size >= 24;
+
+  elements.lineHeightValueInput.value = formatNumber(lineHeight, 2);
+  elements.lineHeightDecButton.disabled = lineHeight <= 1.35;
+  elements.lineHeightIncButton.disabled = lineHeight >= 2.05;
+
+  elements.widthValueInput.value = formatNumber(width, 0);
+  elements.widthDecButton.disabled = width <= 560;
+  elements.widthIncButton.disabled = width >= 940;
+
   elements.themeSelect.value = prefs.theme || DEFAULT_PREFS.theme;
   elements.resetPrefsButton.hidden = !hasCustomPrefs();
 }
