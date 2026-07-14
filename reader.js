@@ -1037,7 +1037,7 @@ function buildFilePath(payload, settings) {
 function buildClippingMarkdown({ isFirstSave, excerptText, comment, payload, settings }) {
   const body = buildExcerptBlock(excerptText, comment);
   if (!isFirstSave) {
-    return `\n\n${body}`;
+    return body;
   }
   return `${buildFrontmatter(payload, settings)}\n\n${body}`;
 }
@@ -1103,5 +1103,11 @@ function todayDateString() {
 }
 
 function buildObsidianUri({ vault, file, content }) {
-  return `obsidian://new?vault=${encodeURIComponent(vault)}&file=${encodeURIComponent(file)}&append=true&content=${encodeURIComponent(content)}`;
+  return (
+    `obsidian://adv-uri?vault=${encodeURIComponent(vault)}` +
+    `&filepath=${encodeURIComponent(file)}` +
+    `&data=${encodeURIComponent(content)}` +
+    `&mode=append` +
+    `&separator=${encodeURIComponent("\n\n")}`
+  );
 }
