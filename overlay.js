@@ -221,7 +221,11 @@
       "message",
       (event) => {
         if (event.source === iframe.contentWindow && event.data && event.data.type === "quiet-reader:close") {
+          const scrollPercent = event.data.scrollPercent;
           close();
+          if (Number.isFinite(scrollPercent)) {
+            scrollToPercent(scrollPercent);
+          }
         }
       },
       { signal: abortController.signal }
@@ -229,6 +233,11 @@
 
     host.__quietReaderClose = close;
     return { ok: true };
+  }
+
+  function scrollToPercent(percent) {
+    const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+    window.scrollTo(0, scrollable * percent);
   }
 
   function createPayloadId() {
