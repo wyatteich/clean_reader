@@ -1,5 +1,17 @@
 const PAYLOAD_PREFIX = "quiet-reader:";
 
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (
+    message &&
+    message.type === "quiet-reader:open-obsidian" &&
+    typeof message.uri === "string" &&
+    sender.tab &&
+    typeof sender.tab.id === "number"
+  ) {
+    chrome.tabs.update(sender.tab.id, { url: message.uri });
+  }
+});
+
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab || typeof tab.id !== "number") {
     await openReaderError(
