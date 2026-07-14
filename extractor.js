@@ -96,6 +96,7 @@
     byline: getByline(),
     siteName: getSiteName(),
     excerpt: getExcerpt(),
+    published: getPublished(candidate),
     content,
     textLength: text.length,
     wordCount,
@@ -314,6 +315,21 @@
 
   function getExcerpt() {
     return meta("name", "description") || meta("property", "og:description") || "";
+  }
+
+  function getPublished(candidateElement) {
+    const metaValue =
+      meta("property", "article:published_time") ||
+      meta("name", "date") ||
+      meta("name", "publish-date") ||
+      meta("name", "publication_date") ||
+      meta("property", "og:updated_time");
+    if (metaValue) {
+      return metaValue.trim();
+    }
+
+    const timeElement = candidateElement && candidateElement.querySelector("time[datetime]");
+    return timeElement ? (timeElement.getAttribute("datetime") || "").trim() : "";
   }
 
   function getArticleFont(element) {
