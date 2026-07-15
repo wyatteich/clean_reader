@@ -137,7 +137,33 @@
       }
     });
 
-    return best || document.body;
+    return preferInnerSemanticCandidate(best, candidates) || document.body;
+  }
+
+  // A generic layout wrapper (e.g. a "content" div holding a left rail, the
+  // article, and a right rail) can outscore the real <article>/<main> just by
+  // being bigger, dragging sidebar widgets into the extracted text. When that
+  // happens, prefer the highest-scoring semantic descendant instead.
+  function preferInnerSemanticCandidate(element, candidates) {
+    const semanticSelector = "article, main, [role='main']";
+    if (!element || element.matches(semanticSelector)) {
+      return element;
+    }
+
+    let innerBest = null;
+    let innerBestScore = -Infinity;
+    candidates.forEach((candidate) => {
+      if (candidate === element || !element.contains(candidate) || !candidate.matches(semanticSelector)) {
+        return;
+      }
+      const score = scoreElement(candidate);
+      if (score > innerBestScore) {
+        innerBest = candidate;
+        innerBestScore = score;
+      }
+    });
+
+    return innerBest || element;
   }
 
   function scoreElement(element) {
@@ -153,7 +179,7 @@
     if (tag === "main") score += 30;
     if (tag === "section") score += 10;
 
-    const classAndId = `${element.className || ""} ${element.id || ""}`;
+    const classAndId = classSignal(element);
     if (POSITIVE_RE.test(classAndId)) score += 35;
     if (NEGATIVE_RE.test(classAndId)) score -= 45;
 
@@ -192,9 +218,16 @@
     const clone = element.cloneNode(true);
     clone.querySelectorAll(STRIP_SELECTOR).forEach((node) => node.remove());
 
-    clone.querySelectorAll("*").forEach((node) => {
-      const classAndId = `${node.className || ""} ${node.id || ""}`;
-      if (NEGATIVE_RE.test(classAndId) && !POSITIVE_RE.test(classAndId) && textOf(node).length < 500) {
+    Array.from(clone.querySelectorAll("*")).forEach((node) => {
+      if (!node.parentNode) {
+        return;
+      }
+      const classAndId = classSignal(node);
+      if (
+        NEGATIVE_RE.test(classAndId) &&
+        !POSITIVE_RE.test(classAndId) &&
+        (textOf(node).length < 500 || linkDensityOf(node) > 0.5)
+      ) {
         node.remove();
       }
     });
@@ -376,6 +409,25 @@
     return ((element && (element.innerText || element.textContent)) || "")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  // Many sites build class names from CSS modules (e.g. "SidebarRight_container")
+  // with no separator at the camelCase boundary, so a plain \bsidebar\b match
+  // never fires. Append a space-split copy so those tokens are matchable too.
+  function classSignal(element) {
+    const raw = `${element.className || ""} ${element.id || ""}`;
+    return `${raw} ${raw.replace(/([a-z0-9])([A-Z])/g, "$1 $2")}`;
+  }
+
+  function linkDensityOf(element) {
+    const text = textOf(element);
+    if (!text.length) {
+      return 0;
+    }
+    const linkText = Array.from(element.querySelectorAll("a"))
+      .map((link) => textOf(link))
+      .join(" ");
+    return linkText.length / text.length;
   }
 
   function cleanTitle(title) {

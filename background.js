@@ -32,6 +32,16 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 
   try {
+    const closed = await closeExistingOverlay(tab.id);
+    if (closed) {
+      return;
+    }
+  } catch (error) {
+    // No overlay present, or the page does not allow scripting; fall through
+    // to the normal extract-and-show flow.
+  }
+
+  try {
     const [injection] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["extractor.js"]
@@ -67,6 +77,22 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 function isWebPage(url) {
   return /^https?:\/\//i.test(url || "");
+}
+
+async function closeExistingOverlay(tabId) {
+  const [injection] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const host = document.getElementById("quiet-reader-overlay-host");
+      if (host && typeof host.__quietReaderClose === "function") {
+        host.__quietReaderClose();
+        return true;
+      }
+      return false;
+    }
+  });
+
+  return Boolean(injection && injection.result);
 }
 
 function createId() {
